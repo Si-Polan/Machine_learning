@@ -4,6 +4,7 @@ import numpy as np
 import streamlink
 import cv2
 import imutils
+from imutils.contours import sort_contours
 from datetime import datetime
 import requests
 import json
@@ -11,11 +12,11 @@ import json
 url_api = 'URL_API'
 url_api_backup = 'URL_API_BACKUP'
 
-vehicle_model = YOLO("./runs/detect/train/weights/best.pt")
-helmet_model = YOLO("./runs/detect/train2/weights/best.pt")
-seatbelt_model = YOLO("./runs/detect/train4/weights/best.pt")
-plate_model = YOLO("./runs/detect/train3/weights/best.pt")
-ocr_model = tf.keras.models.load_model("./datasets/ocr_model.h5")
+vehicle_model = YOLO("./models/vehicle.pt")
+helmet_model = YOLO("./models/helmet.pt")
+plate_model = YOLO("./models/plate.pt")
+seatbelt_model = YOLO("./models/seatbelt.pt")
+ocr_model = tf.keras.models.load_model("./models/ocr.h5")
 
 streams = streamlink.streams('https://cctvjss.jogjakota.go.id/atcs/ATCS_Simpang_Tugu.stream/chunklist_w857074814.m3u8')
 stream_url = streams['best'].url
@@ -23,16 +24,16 @@ cap = cv2.VideoCapture(stream_url)
 
 def ocr_plate(number_plate_image):
     gray = cv2.cvtColor(number_plate_image, cv2.COLOR_BGR2GRAY)
-    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-    edged = cv2.Canny(blurred, 30, 150)
+    blurred = cv2.GaussianBlur(gray, (3, 3), 0)
+    edged = cv2.Canny(blurred, 50, 200)
     contours = cv2.findContours(edged.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     contours = imutils.grab_contours(contours)
-    contours = imutils.contours.sort_contours(contours, method="left-to-right")[0]
+    contours = sort_contours(contours, method="left-to-right")[0]
 
     characters = []
     for contour in contours:
         (x, y, w, h) = cv2.boundingRect(contour)
-        if (5 <= w <= 150) and (15 <= h <= 120):
+        if (10 <= w <= 200) and (20 <= h <= 150):
             roi = gray[y:y + h, x:x + w]
             thresh = cv2.threshold(roi, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)[1]
             (tH, tW) = thresh.shape
@@ -96,13 +97,15 @@ def send_data(vehicle_image, type):
 
 while True:
     ret, frame = cap.read()
-    vehicle_result = vehicle_model.track(frame, show=True)
+    image = cv2.resize(frame, (1280, 1280))
+    vehicle_result = vehicle_model.predict(image)
 
     for r in vehicle_result:
         for box in r.boxes:
             x1, y1, x2, y2 = box.xyxy[0]
             track_ids = box.id
-            vehicle_image = frame[int(y1):int(y2), int(x1):int(x2)]
+            vehicle_image = image[int(y1):int(y2), int(x1):int(x2)]
+            vehicle_image = cv2.resize(vehicle_image, (640, 640))
 
             if vehicle_model.names[int(box.cls)] == "bike":
                 violation_results = helmet_model.predict(vehicle_image)
