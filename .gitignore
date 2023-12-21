@@ -1,6 +1,5 @@
-Bike-Helmet-Detection-1/
-detect-person-on-motorbike-or-scooter/
-Vehicle-Registration-Plates-1/
+datasets/
+runs/
 kaggle.json
 
 # Node artifact files
